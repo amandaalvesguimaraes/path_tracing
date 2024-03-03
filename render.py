@@ -566,61 +566,10 @@ class geometry(scene_object):
                 
         return hit
 
-        for t in self.triangles:
-            #print('t',t)
-            v0 = numpy.array(self.vertices[t[0] - 1])
-            v1 = numpy.array(self.vertices[t[1] - 1])
-            v2 = numpy.array(self.vertices[t[2] - 1])
-            #print('v0', v0)
-
-            normal = normalized(numpy.cross(v0 - v1, v0 - v2))    
-            #print ('normal', normal)
-            #print(direction)  
-
-            ldotn = numpy.dot(normalized(direction),normalized(normal))
-            #print('ndotl', ldotn)
-
-            # nao ha colisao se o plano nao esta de frente para o raio
-            if ldotn >= 0.000:
-                continue
-            
-            # print ('self.position', v)
-            # print ('self.position', self.position)
-            t = numpy.dot((v0 - origin), normal) / ldotn
-        
-            # nao ha colisao
-            if t<0:
-                return 0
-            else: # colisao
-                hitPoint = origin + direction * t
-                coll_normal = normal #self.getNormal(hitPoint)
-                color = self.getColor(hitPoint)
-                return rayhit(self, hitPoint, coll_normal, t, color, hitPoint - origin)
-            
-
-            # print ('self.position', self.position)
-            # print ('origin', origin)
-            # t = numpy.dot((self.position - origin), normal) / ldotn
-            
-            # # nao ha colisao
-            # if t < 0:
-            #     continue
-            # else: # colisao
-            hitPoint = origin + direction * t
-            coll_normal = normal #self.getNormal(hitPoint)
-            color = self.getColor(hitPoint)
-            return rayhit(hitObj=self, hitPoint=hitPoint, hitNormal=coll_normal,hitDistance=numpy.linalg.norm(hitPoint-origin), color=color, ray=hitPoint-origin)
-        #self, hitPoint, coll_normal, t, color, hitPoint - origin)
-        
-        return 0
-
 def read_sdl_file(file_path):
-    #vertices = []
-    #faces = []
-    
     objs = []
     lights = []
-    # eye 0.0 0.0 5.7
+    eye = (0.0, 0.0, 5.7)
     # size 200 200
     # ortho -1 -1 1 1
     # background 0.0 0.0 0.0
@@ -639,8 +588,7 @@ def read_sdl_file(file_path):
             if len(parts) == 0:
                 continue
             if parts[0] == 'object':
-                # print('obj')
-                # print(parts)
+                
                 v, f = read_obj_file(f'objects/{parts[1]}')
                 rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
                 ka = float(parts[5])
@@ -648,7 +596,7 @@ def read_sdl_file(file_path):
                 ks = float(parts[7])
                 kt = float(parts[8])
                 n = float(parts[9]) ## TODO: esse n é o que?
-                # print('rgb', rgb)
+                
                 geo = geometry(vertices=v, triangles=f, color=rgb,ka=ka,kd=kd,ks=ks,kt=kt)
 
                 objs.append(geo)
@@ -665,21 +613,13 @@ def read_sdl_file(file_path):
                 background = colorDenormalize((float(parts[1]), float(parts[2]), float(parts[3])))
             if parts[0] == 'ambient':
                 ambient = colorDenormalize((float(parts[1]), float(parts[1]), float(parts[1])))
+            if parts[0] == 'eye':
+                eye = colorDenormalize((float(parts[1]), float(parts[2]), float(parts[3])))
 
     new_scene = scene_main(lights=lights, objs=objs, bg_color=background, ambientLight=ambient)   
                 
     return new_scene
 
-
-def parser():
-    read_sdl_file('objects/cornellroom.sdl')
-    # v, f = read_obj_file('objects/cube1.obj')
-    # print(v)
-    # print (f)
-    return
-    
-
-#parser()
 
 if __name__ == '__main__' :
     
@@ -689,58 +629,9 @@ if __name__ == '__main__' :
     # multiplicador das coordenadas, para ajustar as entradas ao espaco
     xyz_coord = (1,-1,1)
 
-    # LEITURA DOS INPUTS
-    # with open("input.txt") as f:
-    #     inputs = f.read().split()
-
-    # index = 0
-
-    # res_vertical = int(inputs[index])
-    # index +=1
-    # res_horizontal = int(inputs[index])
-    # index +=1
-    # size_pixel = float(inputs[index])
-    # index +=1
-    # cam_dist = float(inputs[index])
-    # index +=1
-    # cam_pos_x = float(inputs[index])
-    # index +=1
-    # cam_pos_y = float(inputs[index])
-    # index +=1
-    # cam_pos_z = float(inputs[index])
-    # index +=1
-    # cam_forward_x = float(inputs[index])
-    # index +=1
-    # cam_forward_y = float(inputs[index])
-    # index +=1
-    # cam_forward_z = float(inputs[index])
-    # index +=1
-    # cam_up_x = float(inputs[index])
-    # index +=1
-    # cam_up_y = float(inputs[index])
-    # index +=1
-    # cam_up_z = float(inputs[index])
-    # index +=1
-    # bg_color_r = int(inputs[index])
-    # index +=1
-    # bg_color_g = int(inputs[index])
-    # index +=1
-    # bg_color_b = int(inputs[index])
-    # index +=1
-    # max_depth = int(inputs[index])
-    # index +=1
-    # k_obj = int(inputs[index])
-    # index +=1
-
-    # new_scene.setBackground_Color((bg_color_r,bg_color_g,bg_color_b))
-
-    #cam_pos = numpy.array([cam_pos_x  * xyz_coord[0], cam_pos_y  * xyz_coord[1], cam_pos_z * xyz_coord[2]])
-    #cam_forward = numpy.array([cam_forward_x * xyz_coord[0], cam_forward_y * xyz_coord[1], cam_forward_z * xyz_coord[2]]) - cam_pos
-    #cam_up = numpy.array([cam_up_x * xyz_coord[0], cam_up_y * xyz_coord[1], cam_up_z * xyz_coord[2]])
-
     cam_forward = normalized((0,0,-1))
     cam_up = normalized((0,1,0))
-    cam_pos = (0,0,15.7)
+    cam_pos = (0,0,5.7)
     res_horizontal = 200
     res_vertical = 200
     max_depth = 10000
