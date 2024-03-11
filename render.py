@@ -279,6 +279,7 @@ def cast(origin, direction,scene, counter):
     hit = trace(origin,direction,scene)
     if hit:
         color = shade(hit, scene, counter)
+        #print(color)
         
     return (color)
 
@@ -288,8 +289,7 @@ def trace(origin, direction, scene:scene_main):
 
     # buscamos intersecoes com todos os objetos e retornamos a intersecao mais proxima ao ponto de origem do raio
     for i in range(len(scene.objs)):
-
-        hitCheck = scene.objs[i].intersection(origin,direction)
+        hitCheck = scene.objs[i].intersection(numpy.array(origin),direction)
 
         if hitCheck != 0 and (hit == 0 or hitCheck.hitDistance < hit.hitDistance):
             hit = hitCheck
@@ -303,6 +303,7 @@ def shade(hit:rayhit, scene:scene_main, counter):
     # cor do pixel iniciada com a luz ambiente
     color =  colorScale(colorMul(color_difuse, colorNormalize(scene.ambientLight)), hit.hitObj.ka)
 
+    return color_difuse 
     # para cada luz na cena calcular a cor
     for light in scene.lights:
         color_light = colorNormalize(light.color)
@@ -458,6 +459,8 @@ def read_obj_file(file_path):
                 face = [int(p) for p in parts[1:]]
                 faces.append(face)
 
+    # print (vertices)
+    # print(faces)
     return vertices, faces
 
 class luz_cornell(light):
@@ -471,8 +474,8 @@ def rayTriangleIntersect(orig, dir, v0, v1, v2, t):
     # float &t) ->bool
 
     #// compute the plane's normal
-    v0v1 = v1 - v0;
-    v0v2 = v2 - v0;
+    v0v1 = v1 - v0
+    v0v2 = v2 - v0
     #// no need to normalize
     N = numpy.cross(v0v1, v0v2)# v0v1.crossProduct(v0v2); // N
     area2 = numpy.linalg.norm(N) #length ABCABC
@@ -483,7 +486,7 @@ def rayTriangleIntersect(orig, dir, v0, v1, v2, t):
 
     NdotRayDirection = numpy.dot(N, dir)# N.dotProduct(dir);
 
-    kEpsilon = 0.0001
+    kEpsilon = 0.00000000001
     if numpy.abs(NdotRayDirection) < kEpsilon: # // almost 0
         return False#; // they are parallel, so they don't intersect! 
 
@@ -550,6 +553,9 @@ class geometry(scene_object):
         return super().getColor(p)
 
     def intersection(self, origin, direction):
+        #print(type(origin), type(direction))
+        # print()
+
         #formula para interseção demonstrada no scratchapixel.com
         max_distance = 999999999999999
         hit = 0
@@ -557,7 +563,13 @@ class geometry(scene_object):
             v0 = numpy.array(self.vertices[t[0] - 1])
             v1 = numpy.array(self.vertices[t[1] - 1])
             v2 = numpy.array(self.vertices[t[2] - 1])
+            # print('t')
+            # print(v0)
+            # print(v1)
+            # print(v2)
+            
             t = 0
+
             if(rayTriangleIntersect(origin, direction, v0, v1, v2, t)):
                 if t < max_distance:
                     max_distance = t
@@ -627,11 +639,11 @@ if __name__ == '__main__' :
     new_scene = read_sdl_file('objects/cornellroom.sdl') # scene_main()
 
     # multiplicador das coordenadas, para ajustar as entradas ao espaco
-    xyz_coord = (1,-1,1)
+    #xyz_coord = (1,-1,1)
 
     cam_forward = normalized((0,0,-1))
     cam_up = normalized((0,1,0))
-    cam_pos = (0,0,5.7)
+    cam_pos = (0,0,15.7)
     res_horizontal = 200
     res_vertical = 200
     max_depth = 10000
