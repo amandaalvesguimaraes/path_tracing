@@ -289,7 +289,8 @@ def trace(origin, direction, scene:scene_main):
 
     # buscamos intersecoes com todos os objetos e retornamos a intersecao mais proxima ao ponto de origem do raio
     for i in range(len(scene.objs)):
-        hitCheck = scene.objs[i].intersection(numpy.array(origin),direction)
+        
+        hitCheck = scene.objs[i].intersection(origin,direction)
 
         if hitCheck != 0 and (hit == 0 or hitCheck.hitDistance < hit.hitDistance):
             hit = hitCheck
@@ -303,11 +304,12 @@ def shade(hit:rayhit, scene:scene_main, counter):
     # cor do pixel iniciada com a luz ambiente
     color =  colorScale(colorMul(color_difuse, colorNormalize(scene.ambientLight)), hit.hitObj.ka)
 
-    return color_difuse 
+    #return color_difuse 
     # para cada luz na cena calcular a cor
     for light in scene.lights:
         color_light = colorNormalize(light.color)
         l = light.position - hit.hitPoint
+        print(light.position)
         lDist = numpy.linalg.norm(l)
         l = normalized(l)
 
@@ -465,71 +467,77 @@ def read_obj_file(file_path):
 
 class luz_cornell(light):
 
-    def __init__(self, position, color, vertices, triangles):
-        super().__init__(position, color)
+    def __init__(self, color, vertices, triangles):
+        self.vertices = vertices
+        self.triangles = triangles
 
-def rayTriangleIntersect(orig, dir, v0, v1, v2, t):
-    # const Vec3f &orig, const Vec3f &dir,
-    # const Vec3f &v0, const Vec3f &v1, const Vec3f &v2,
-    # float &t) ->bool
+        super().__init__(self.get_center(), color)
+    
+    def get_center(self):
+        center = numpy.array([0,0,0])
 
-    #// compute the plane's normal
+        for v in self.vertices:
+            center = center + numpy.array(v)
+        
+        if len(self.vertices) > 0:
+            center = center/len(self.vertices)
+
+        return center
+
+def ray_triangle_intersect(orig, dir, v0, v1, v2):
+    kEpsilon = 1e-8
+
+    # Compute the plane's normal
     v0v1 = v1 - v0
     v0v2 = v2 - v0
-    #// no need to normalize
-    N = numpy.cross(v0v1, v0v2)# v0v1.crossProduct(v0v2); // N
-    area2 = numpy.linalg.norm(N) #length ABCABC
- 
-    #// Step 1: finding P
-    
-    #// check if the ray and plane are parallel.
+    N = numpy.cross(v0v1, v0v2)  # N
+    area2 = numpy.linalg.norm(N)
 
-    NdotRayDirection = numpy.dot(N, dir)# N.dotProduct(dir);
+    # Step 1: finding P
 
-    kEpsilon = 0.00000000001
-    if numpy.abs(NdotRayDirection) < kEpsilon: # // almost 0
-        return False#; // they are parallel, so they don't intersect! 
+    # Check if the ray and plane are parallel.
+    NdotRayDirection = numpy.dot(N, dir)
+    if abs(NdotRayDirection) < kEpsilon:  # Almost 0
+        return False  # They are parallel, so they don't intersect!
 
-    #// compute d parameter using equation 2
-    d = numpy.dot(N, v0)
-    
-    # // compute t (equation 3)
-    t = -(numpy.dot(N,orig) + d) / NdotRayDirection#;
-    
-    #// check if the triangle is behind the ray
-    if t < 0: 
-        return False #; // the triangle is behind
- 
-    #// compute the intersection point using equation 1
+    # Compute d parameter using equation 2
+    d = -numpy.dot(N, v0)
+
+    # Compute t (equation 3)
+    t = -(numpy.dot(N, orig) + d) / NdotRayDirection
+
+    # Check if the triangle is behind the ray
+    if t < 0:
+        return False, t  # The triangle is behind
+
+    # Compute the intersection point using equation 1
     P = orig + t * dir
- 
-    #// Step 2: inside-outside test
-    #C; // vector perpendicular to triangle's plane
- 
-    #// edge 0
-    edge0 = v1 - v0#; 
-    vp0 = P - v0#;
-    C = numpy.cross(edge0,vp0)
-    if (numpy.dot(N,C) < 0):
-        return False #; // P is on the right side
- 
-    #// edge 1
-    edge1 = v2 - v1#; 
-    vp1 = P - v1#;
-    C = numpy.cross(edge1,vp1)
-    if (numpy.dot(N,C) < 0):
-        return False #; // P is on the right side
- 
-    # // edge 2
-    edge2 = v0 - v2#; 
-    vp2 = P - v2#;
-    C = numpy.cross(edge2,vp2)#;
-    if (numpy.dot(N,C) < 0):
-        return False #; // P is on the right side;
 
-    return True #; #// this ray hits the triangle
+    # Step 2: inside-outside test
+    C = numpy.zeros(3)  # Vector perpendicular to triangle's plane
 
+    # Edge 0
+    edge0 = v1 - v0
+    vp0 = P - v0
+    C = numpy.cross(edge0, vp0)
+    if numpy.dot(N, C) < 0:
+        return False, t  # P is on the right side
 
+    # Edge 1
+    edge1 = v2 - v1
+    vp1 = P - v1
+    C = numpy.cross(edge1, vp1)
+    if numpy.dot(N, C) < 0:
+        return False, t  # P is on the right side
+
+    # Edge 2
+    edge2 = v0 - v2
+    vp2 = P - v2
+    C = numpy.cross(edge2, vp2)
+    if numpy.dot(N, C) < 0:
+        return False, t  # P is on the right side
+
+    return True, t  # This ray hits the triangle
 
 class geometry(scene_object):
     def __init__(self, vertices, triangles, color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
@@ -553,8 +561,6 @@ class geometry(scene_object):
         return super().getColor(p)
 
     def intersection(self, origin, direction):
-        #print(type(origin), type(direction))
-        # print()
 
         #formula para interseção demonstrada no scratchapixel.com
         max_distance = 999999999999999
@@ -563,14 +569,10 @@ class geometry(scene_object):
             v0 = numpy.array(self.vertices[t[0] - 1])
             v1 = numpy.array(self.vertices[t[1] - 1])
             v2 = numpy.array(self.vertices[t[2] - 1])
-            # print('t')
-            # print(v0)
-            # print(v1)
-            # print(v2)
             
-            t = 0
+            hit_ocurred, t = ray_triangle_intersect(origin, direction, v0, v1, v2)
 
-            if(rayTriangleIntersect(origin, direction, v0, v1, v2, t)):
+            if hit_ocurred:
                 if t < max_distance:
                     max_distance = t
                     normal = normalized(numpy.cross(v0 - v1, v0 - v2))
@@ -608,7 +610,7 @@ def read_sdl_file(file_path):
                 ks = float(parts[7])
                 kt = float(parts[8])
                 n = float(parts[9]) ## TODO: esse n é o que?
-                
+                print (v)
                 geo = geometry(vertices=v, triangles=f, color=rgb,ka=ka,kd=kd,ks=ks,kt=kt)
 
                 objs.append(geo)
@@ -619,7 +621,7 @@ def read_sdl_file(file_path):
                 rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
 
                 #new_light = luz_cornell(position=[0,0,0], color=rgb,vertices=v,triangles=f)
-                new_light = pointLight((-0.900, 3.830, -23.320), (250,250,250))
+                new_light = luz_cornell(rgb, v, f)
                 lights.append(new_light)
             if parts[0] == 'background':
                 background = colorDenormalize((float(parts[1]), float(parts[2]), float(parts[3])))
@@ -639,11 +641,17 @@ if __name__ == '__main__' :
     new_scene = read_sdl_file('objects/cornellroom.sdl') # scene_main()
 
     # multiplicador das coordenadas, para ajustar as entradas ao espaco
-    #xyz_coord = (1,-1,1)
+    xyz_coord = numpy.array([1, 1, 1])
 
-    cam_forward = normalized((0,0,-1))
-    cam_up = normalized((0,1,0))
-    cam_pos = (0,0,15.7)
+    for obj in new_scene.objs:
+        for i in range(len(obj.vertices)):
+            # print(obj.vertices[i])
+            obj.vertices[i] = obj.vertices[i] * xyz_coord
+            # print(obj.vertices[i])
+
+    cam_forward = normalized(numpy.array([0,0,-1]))
+    cam_up = normalized(numpy.array([0,1,0]))
+    cam_pos = numpy.array([0,0,15.7])
     res_horizontal = 200
     res_vertical = 200
     max_depth = 10000
