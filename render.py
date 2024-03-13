@@ -309,7 +309,7 @@ def shade(hit:rayhit, scene:scene_main, counter):
     for light in scene.lights:
         color_light = colorNormalize(light.color)
         l = light.position - hit.hitPoint
-        print(light.position)
+        #print(light.position)
         lDist = numpy.linalg.norm(l)
         l = normalized(l)
 
@@ -638,7 +638,7 @@ def read_sdl_file(file_path):
 if __name__ == '__main__' :
     
     # nova cena e criada que guardara os objetos e luzes
-    new_scene = read_sdl_file('objects/cornellroom.sdl') # scene_main()
+    new_scene = read_sdl_file('objects/cornellroom2/cornellroom2.sdl') # scene_main()
 
     # multiplicador das coordenadas, para ajustar as entradas ao espaco
     xyz_coord = numpy.array([1, 1, 1])
