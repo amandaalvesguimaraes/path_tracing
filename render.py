@@ -309,7 +309,6 @@ def shade(hit:rayhit, scene:scene_main, counter):
     for light in scene.lights:
         color_light = colorNormalize(light.color)
         l = light.position - hit.hitPoint
-        print(light.position)
         lDist = numpy.linalg.norm(l)
         l = normalized(l)
 
