@@ -5,7 +5,7 @@
 # Modificado de acordo com os testes
 # do Vinicius 6/12/2005
 
-size 100 100
+size 400 400
 ortho -1.5 -1.5 1.5 1.5
 background 0.2 0.0 0.2
 ambient 0.5
