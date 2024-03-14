@@ -3,6 +3,8 @@ import cmath
 import numpy
 from PIL import Image
 from multiprocessing import Process, Array
+import random, math
+import datetime
 
 # classe para passar os dados quando houver algum hit
 class rayhit:
@@ -29,7 +31,20 @@ class scene_object:
     
     def getColor(self,p):
         return self.color
-
+    
+    def get_secondary_ray_type(self):
+        """"
+        Pode ser 'kd', 'ks' ou 'kt'
+        """
+        ktot = self.kd + self.ks + self.kt
+        k_rand = random.uniform(0, ktot)
+        if k_rand <= self.kd:
+            return 'kd'
+        elif k_rand <= self.kd + self.ks:
+            return 'ks'
+        else:
+            return 'kt' 
+        
     # retorna a normal no ponto p
     def getNormal(self, p):
         return
@@ -37,120 +52,6 @@ class scene_object:
     # retorna 0 se não houver hit, se houver retorna um rayhit
     def intersection(self, origin, direction):
         return
-
-# classe de objeto especial piso quadriculado usada apenas para testes proprios (similar ao plano)
-class piso(scene_object):
-    def __init__(self, position = [0,0,0], normal = [0,1,0], color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
-        self.normal = normalized(normal)
-        super().__init__(position, color, ka, kd, ks, phongN, kr, kt, refN)
-    
-    def getNormal(self, p):
-        return self.normal
-    
-    # getcolor especial para formar o quadriculado
-    def getColor(self, p):
-        f = .025
-        if numpy.floor(p[0].real * f) % 2 ==  numpy.floor(p[1].real * f) % 2:
-            return (0,0,0)
-        else:
-            return (255,255,255)
-
-    def intersection(self, origin, direction):
-        #formula para interseção demonstrada no scratchapixel.com        
-        ldotn = numpy.dot(normalized(direction),normalized(self.normal))
-        if ldotn >= 0.000:
-            return 0
-        
-        t = numpy.dot((self.position - origin), self.normal) / ldotn
-
-        if t<0:
-            return 0
-        else:
-            hitPoint = origin + direction * t
-            normal = self.getNormal(hitPoint)
-            color = self.getColor(hitPoint)
-            return rayhit(self, hitPoint, normal, t, color, hitPoint - origin)
-    
-
-# classe do objeto: plano
-class plane(scene_object):
-    def __init__(self, position = [0,0,0], normal = [0,1,0], color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
-        self.normal = normalized(normal)
-        super().__init__(position, color, ka, kd, ks, phongN, kr, kt, refN)
-    
-    def getNormal(self, p):
-        return self.normal
-    
-    def getColor(self, p):
-        return super().getColor(p)
-
-    def intersection(self, origin, direction):
-        #formula para interseção demonstrada no scratchapixel.com        
-        ldotn = numpy.dot(normalized(direction),normalized(self.normal))
-
-        # nao ha colisao se o plano nao esta de frente para o raio
-        if ldotn >= 0.000:
-            return 0
-        
-        t = numpy.dot((self.position - origin), self.normal) / ldotn
-        
-        # nao ha colisao
-        if t<0:
-            return 0
-        else: # colisao
-            hitPoint = origin + direction * t
-            normal = self.getNormal(hitPoint)
-            color = self.getColor(hitPoint)
-            return rayhit(self, hitPoint, normal, t, color, hitPoint - origin)
-
-# classe do objeto: esfera
-class sphere(scene_object):
-
-    def __init__(self, position = [0,0,0], radius = 1, color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
-        self.radius = radius
-        super().__init__(position, color, ka, kd, ks, phongN, kr, kt, refN)
-    
-    def getNormal(self, p):
-        return normalized(p - self.position)
-    
-    def getColor(self, p):
-        return super().getColor(p)
-    
-    def intersection(self, origin, direction):
-        #formula para interseção demonstrada no stratchapixel.com
-        l = self.position - origin
-        
-        tca = numpy.dot(l,direction)
-
-        if tca < 0:
-            return 0
-        
-        pitagoras = pow(numpy.linalg.norm(l) ,2) - pow(tca,2)
-        if pitagoras < 0:
-            return 0
-        d = sqrt(pitagoras)
-        
-        if d.real < 0.0:
-            return 0
-        elif d.real > self.radius:
-            return 0
-        else:
-            thc = sqrt(pow(self.radius,2) - pow(d,2))
-
-            # buscamos a colisao mais proxima
-            hitDist = numpy.minimum(tca - thc, tca + thc)
-            
-            # mas, se estamos dentro da esfera significa que o raio acabou de entrar na esfera, logo usamos a colisao mais distance
-            if numpy.linalg.norm(l) < self.radius: 
-                hitDist = numpy.maximum(tca-thc,tca+thc)
-
-            hitPoint = origin + direction * hitDist
-
-            normal = self.getNormal(hitPoint)
-
-            color = self.getColor(hitPoint)
-            
-            return rayhit(self, hitPoint, normal, hitDist, color, hitPoint - origin)
 
 # classe da cena, vai guardar os objetos
 class scene_main:
@@ -168,19 +69,7 @@ class scene_main:
         self.bg_color = color
     
     def getBackground_Color(self):
-        return self.bg_color    
-    
-    def addSphere(self, position, radius, color, ka, kd, ks, phongN, kr, kt, refN):
-        self.objs.append(sphere(position, radius, color, ka, kd, ks, phongN, kr, kt, refN))
-    
-    def addPlane(self, position, normal, color, ka, kd, ks, phongN, kr, kt, refN):
-        self.objs.append(plane(position, normal, color, ka, kd, ks, phongN, kr, kt, refN))
-
-    def addPiso(self, position, normal, color, ka, kd, ks, phongN, kr, kt, refN):
-        self.objs.append(piso(position, normal, color, ka, kd, ks, phongN, kr, kt, refN))
-
-    def addPointLight(self, position, color):
-        self.lights.append(pointLight(position, color))
+        return self.bg_color
     
     def setAmbientLight(self, color):
         self.ambientLight = color
@@ -192,15 +81,8 @@ class light:
         self.position = position
         self.color = color
 
-# classe da luz especifica do tipo pointLight
-class pointLight(light):
-
-    def __init__(self, position, color):
-        super().__init__(position, color)
-
-
 # função principal para criar a imagem test.png com o resultado
-def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth):
+def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth, rays_per_pixel):
     # cria um Image todo preto
     img = Image.new('RGB', (res_h,res_v), color = (0,0,0))
     
@@ -232,7 +114,7 @@ def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth
         ars.append(Array("i", range(res_v * (xranges[t + 1] - xranges[t]))))
 
         all_threads.append(Process(target=thread_render, args=(cam_pos,cam_up,cam_right,topleft,pxl_size,scene,xranges[t],xranges[t+1],0,res_v, 
-            max_depth, ars[t*3],ars[t*3+1], ars[t*3+2]),daemon=True))
+            max_depth, rays_per_pixel, ars[t*3],ars[t*3+1], ars[t*3+2]),daemon=True))
     
     #iniciar as threads
     for x in all_threads:
@@ -250,12 +132,12 @@ def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth
                 img.putpixel((xranges[i] + x, y),c)       
 
     img.save('test.png')
-    print("imagem salva")
+    print(f'[{datetime.datetime.now().strftime("%H:%M:%S")}] imagem salva')
 
 
 # funcao que vai obter os dados de pixels em um segmento da imagem renderizada
 # os intervalos x0, x1 sao usados usados
-def thread_render(cam_pos, cam_up, cam_right, topleft, pxl_size, scene, x0, x1, y0, y1, max_depth, arsR,arsG,arsB):
+def thread_render(cam_pos, cam_up, cam_right, topleft, pxl_size, scene, x0, x1, y0, y1, max_depth, rays_per_pixel, arsR,arsG,arsB):
     
     for x_ in range(x1-x0):
         x = x_ + x0
@@ -265,13 +147,27 @@ def thread_render(cam_pos, cam_up, cam_right, topleft, pxl_size, scene, x0, x1, 
 
             ray_dir = normalized((topleft + (cam_up * -y + cam_right * x) * pxl_size) - cam_pos)
             # raycast e feito a partir da camera com a direcao do raio, max_depth e a profundida da recursao(raios secundarios de reflexao e refracao)
-            c = colorDenormalize(cast(cam_pos,ray_dir, scene, max_depth))
+
+            # color = (0,0,0)
+            # for j_ in range(rays_per_pixel):
+            #     color = colorSum(color, cast(cam_pos,ray_dir, scene, max_depth))
+            # color = colorDivide(color, rays_per_pixel)
+            c = colorDenormalize(cast_first(cam_pos,ray_dir, scene, max_depth, rays_per_pixel))
             arsR[x_ * y1 + y_] = c[0]
             arsG[x_ * y1 + y_] = c[1]
             arsB[x_ * y1 + y_] = c[2]
     
-    print("thread end")
+    print(f'[{datetime.datetime.now().strftime("%H:%M:%S")}] thread end')
 
+def cast_first(origin, direction,scene, counter, rays_per_pixel):
+    color = colorNormalize(scene.getBackground_Color())
+    hit = trace(origin,direction,scene)
+    if hit:
+        #for _ in range(rays_per_pixel):
+        color = shade_first(hit, scene, counter, rays_per_pixel)
+        #print(color)
+        
+    return (color)
 
 # funcao cast sera chamada recursivamente, a entrada counter definira quantas recursoes serao feitas
 def cast(origin, direction,scene, counter):
@@ -282,7 +178,6 @@ def cast(origin, direction,scene, counter):
         #print(color)
         
     return (color)
-
 
 def trace(origin, direction, scene:scene_main):
     hit = 0
@@ -296,6 +191,81 @@ def trace(origin, direction, scene:scene_main):
             hit = hitCheck
     
     return hit
+
+
+def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
+    # cor do objeto
+    color_difuse = colorNormalize(hit.color)
+    # cor do pixel iniciada com a luz ambiente
+    color =  colorScale(colorMul(color_difuse, colorNormalize(scene.ambientLight)), hit.hitObj.ka)
+
+    #return color_difuse 
+    # para cada luz na cena calcular a cor
+    for light in scene.lights:
+        color_light = colorNormalize(light.color)
+        l = light.position - hit.hitPoint
+        lDist = numpy.linalg.norm(l)
+        l = normalized(l)
+
+        ndotl = numpy.dot(hit.hitNormal, l).real
+        
+        
+        # se recebe luz
+        if ndotl > 0:
+            shadowHit = trace(hit.hitPoint + l *0.00001, l, scene)
+            # print('shadowHit.hitDistance', shadowHit.hitDistance)
+            if shadowHit !=0 and shadowHit.hitDistance < lDist:
+                continue
+            
+            # cor difusa
+            color = colorSum(color, colorScale(colorMul(color_light, color_difuse), ndotl * hit.hitObj.kd))
+            
+            rj = 2 * ndotl * hit.hitNormal - l
+
+            view = normalized(-hit.ray)
+            rjdotview = numpy.dot(rj,view).real
+            if rjdotview < 0:
+                rjdotview = 0
+            
+            # cor especular
+            color = colorSum(color, colorScale(color_light , hit.hitObj.ks * numpy.power(rjdotview, hit.hitObj.phongN)))
+
+    # ray recursivo do pathtracing
+    if counter > 0:
+        sec_color = (0,0,0)
+        # tipo ray
+        for j in range(rays_per_pixel):
+            ray_type = hit.hitObj.get_secondary_ray_type()
+            
+            if ray_type == 'kd': #difuse
+                r1 = random.random()
+                r2 = random.random()
+
+                theta = math.acos(math.sqrt(r1))
+                phi = 2 * math.pi * r2
+
+                # Convert to Cartesian coordinates
+                x = math.sin(theta) * math.cos(phi)
+                y = math.sin(theta) * math.sin(phi)
+                z = math.cos(theta)
+
+                rayDir = normalized(numpy.array([x, y, z]))
+
+                #view = normalized(hit.ray)
+                #rayDir = reflect(view, hit.hitNormal)
+                refColor = cast(hit.hitPoint + hit.hitNormal * 0.00001, rayDir, scene, counter-1)
+                sec_color = colorSum(sec_color, colorScale(refColor, hit.hitObj.kd))
+            elif ray_type == 'ks': #specular
+                view = normalized(hit.ray)
+                rayDir = reflect(view, hit.hitNormal)
+                refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+                sec_color = colorSum(sec_color, colorScale(refColor, hit.hitObj.ks))
+            elif ray_type == 'kt': #transmission
+                pass
+        if rays_per_pixel > 0:
+            color = colorSum(color, colorDivide(sec_color,rays_per_pixel))
+    return color
+
 
 # funcao shade sera chamada recursivamente, a entrada counter definira quantas recursoes serao feitas
 def shade(hit:rayhit, scene:scene_main, counter):
@@ -336,30 +306,61 @@ def shade(hit:rayhit, scene:scene_main, counter):
             # cor especular
             color = colorSum(color, colorScale(color_light , hit.hitObj.ks * numpy.power(rjdotview, hit.hitObj.phongN)))
 
-    # contador de rays recursivos
+    # ray recursivo do pathtracing
     if counter > 0:
-        # refracao
-        kr = hit.hitObj.kr
-        if hit.hitObj.kt > 0:
-            view = normalized(hit.ray)
-            rayDir = refract(view, normalized(hit.hitNormal), hit.hitObj.refN)
-            
-            if numpy.isscalar(rayDir) == False: # se ha refracao
-                # cast recursivo da refracao
-                refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
-                # soma da cor da refracao
-                color = colorSum(color,colorScale(refColor, hit.hitObj.kt))
-            else: # se nao ha refracao
-                kr = 1
+        # tipo ray
+        ray_type = hit.hitObj.get_secondary_ray_type()
         
-        #reflexao
-        if kr > 0:
+        if ray_type == 'kd': #difuse
+            r1 = random.random()
+            r2 = random.random()
+
+            theta = math.acos(math.sqrt(r1))
+            phi = 2 * math.pi * r2
+
+            # Convert to Cartesian coordinates
+            x = math.sin(theta) * math.cos(phi)
+            y = math.sin(theta) * math.sin(phi)
+            z = math.cos(theta)
+
+            rayDir = normalized(numpy.array([x, y, z]))
+
+            #view = normalized(hit.ray)
+            #rayDir = reflect(view, hit.hitNormal)
+            refColor = cast(hit.hitPoint + hit.hitNormal * 0.00001, rayDir, scene, counter-1)
+            color = colorSum(color, colorScale(refColor, hit.hitObj.kd))
+        elif ray_type == 'ks': #specular
             view = normalized(hit.ray)
             rayDir = reflect(view, hit.hitNormal)
-            # cast recursivo da reflexao
             refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
-            # soma da cor da reflexao
-            color = colorSum(color,colorScale(refColor, kr))
+            color = colorSum(color, colorScale(refColor, hit.hitObj.ks))
+        elif ray_type == 'kt': #transmission
+            pass
+
+    # contador de rays recursivos
+    # if counter > 0:
+    #     # refracao
+    #     kr = hit.hitObj.kr
+    #     if hit.hitObj.kt > 0:
+    #         view = normalized(hit.ray)
+    #         rayDir = refract(view, normalized(hit.hitNormal), hit.hitObj.refN)
+            
+    #         if numpy.isscalar(rayDir) == False: # se ha refracao
+    #             # cast recursivo da refracao
+    #             refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+    #             # soma da cor da refracao
+    #             color = colorSum(color,colorScale(refColor, hit.hitObj.kt))
+    #         else: # se nao ha refracao
+    #             kr = 1
+        
+    #     #reflexao
+    #     if kr > 0:
+    #         view = normalized(hit.ray)
+    #         rayDir = reflect(view, hit.hitNormal)
+    #         # cast recursivo da reflexao
+    #         refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+    #         # soma da cor da reflexao
+    #         color = colorSum(color,colorScale(refColor, kr))
     
 
     return color
@@ -433,6 +434,15 @@ def colorSum(color1, color2):
     b2 = color2[2]
 
     return (r1+r2, g1+g2, b1+b2)
+
+
+def colorDivide(color, div):
+    r = color[0]
+    g = color[1]
+    b = color[2]
+
+    return (r/div, g/div, b/div)
+
 
 # passa a cor de (0 - 255) para (0 - 1.0)
 def colorNormalize(color):
@@ -610,7 +620,6 @@ def read_sdl_file(file_path):
                 ks = float(parts[7])
                 kt = float(parts[8])
                 n = float(parts[9]) ## TODO: esse n é o que?
-                print (v)
                 geo = geometry(vertices=v, triangles=f, color=rgb,ka=ka,kd=kd,ks=ks,kt=kt)
 
                 objs.append(geo)
@@ -654,13 +663,14 @@ if __name__ == '__main__' :
     cam_pos = numpy.array([0,0,15.7])
     res_horizontal = 200
     res_vertical = 200
-    max_depth = 10000
-    size_pixel = 0.1
+    max_depth = 1
+    size_pixel = 0.05
     cam_dist = 40
-    
+    rays_per_pixel = 100
+
     # checa se cam_forward e cam_up são aceitos
     if (cam_forward[0] == 0 and cam_forward[1] == 0 and cam_forward[2] == 0) or (cam_up[0] == 0 and cam_up[1] == 0 and cam_up[2] == 0):
         print('cam_forward e cam_up não podem ser [0,0,0] ou paralelas')
     else: # Render da imagem
-        print('gerando imagem...')
-        render(res_horizontal, res_vertical, size_pixel,cam_dist, cam_pos, cam_forward, cam_up, new_scene, max_depth)
+        print(f'[{datetime.datetime.now().strftime("%H:%M:%S")}] gerando imagem...')
+        render(res_horizontal, res_vertical, size_pixel,cam_dist, cam_pos, cam_forward, cam_up, new_scene, max_depth, rays_per_pixel)
