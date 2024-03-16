@@ -5,8 +5,8 @@ from PIL import Image
 from multiprocessing import Process, Array
 import random, math
 import datetime
-import time
-from tqdm import tqdm
+from utils import monitor_progress
+
 
 # classe para passar os dados quando houver algum hit
 class rayhit:
@@ -103,15 +103,6 @@ def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth
     for i in range(thread_count):
         xranges.append(int(i * (res_h / thread_count)))
     xranges.append(res_h)
-    
-    # Função para monitorar o progresso das threads
-    def monitor_progress(threads):
-        with tqdm(total=len(threads)) as pbar:
-            for thread in threads:
-                while thread.is_alive():
-                    pbar.update(0)  # Atualiza a barra de progresso
-                    time.sleep(1)  # Aguarda um segundo
-                pbar.update(1)  # Incrementa o progresso quando a thread termina
 
     # lista das threads
     all_threads = []
@@ -673,8 +664,8 @@ if __name__ == '__main__' :
     cam_forward = normalized(numpy.array([0,0,-1]))
     cam_up = normalized(numpy.array([0,1,0]))
     cam_pos = numpy.array([0,0,15.7])
-    res_horizontal = 200
-    res_vertical = 200
+    res_horizontal = 20
+    res_vertical = 20
     max_depth = 1
     size_pixel = 0.05
     cam_dist = 40
