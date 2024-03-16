@@ -664,8 +664,8 @@ if __name__ == '__main__' :
     cam_forward = normalized(numpy.array([0,0,-1]))
     cam_up = normalized(numpy.array([0,1,0]))
     cam_pos = numpy.array([0,0,15.7])
-    res_horizontal = 20
-    res_vertical = 20
+    res_horizontal = 200
+    res_vertical = 200
     max_depth = 1
     size_pixel = 0.05
     cam_dist = 40
