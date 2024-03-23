@@ -5,7 +5,7 @@ from PIL import Image
 from multiprocessing import Process, Array
 import random, math
 import datetime
-from utils import monitor_progress
+from utils import monitor_progress, load_texture
 
 
 # classe para passar os dados quando houver algum hit
@@ -459,6 +459,7 @@ def colorDenormalize(color):
 def read_obj_file(file_path):
     vertices = []
     faces = []
+    texture_coordinates = []
 
     with open(file_path, 'r') as file:
         for line in file:
@@ -469,6 +470,9 @@ def read_obj_file(file_path):
                 # Vertex line
                 vertex = [float(p) for p in parts[1:]]
                 vertices.append(vertex)
+                texture_coord = [vertex[0] / max(vertices, key=lambda v: v[0])[0], 
+                                 vertex[1] / max(vertices, key=lambda v: v[1])[1]]
+                texture_coordinates.append(texture_coord)
             elif parts[0] == 'f':
                 # Face line
                 face = [int(p) for p in parts[1:]]
@@ -610,20 +614,28 @@ def read_sdl_file(file_path):
     # seed 9
 
     with open(file_path, 'r') as file:
+        texture = load_texture('textures/image.png')
         for line in file:
             parts = line.strip().split()
             if len(parts) == 0:
                 continue
             if parts[0] == 'object':
                 
-                v, f = read_obj_file(f'objects/{parts[1]}')
+                v, f, texture_coordinates = read_obj_file(f'objects/{parts[1]}')
                 rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
                 ka = float(parts[5])
                 kd = float(parts[6])
                 ks = float(parts[7])
                 kt = float(parts[8])
                 n = float(parts[9]) ## TODO: esse n é o que?
-                geo = geometry(vertices=v, triangles=f, color=rgb,ka=ka,kd=kd,ks=ks,kt=kt)
+
+                for face in f:
+                    for vertex_index in face:
+                        texture_coord = texture_coordinates[vertex_index - 1]  # Índice do vértice - 1 para corresponder à lista de vértices
+                        u, v = texture_coord  # Coordenadas de textura (u, v)
+                        texture_color = texture[int(u * texture.shape[0]), int(v * texture.shape[1])]  # Extrair a cor da textura
+                        
+                geo = geometry(vertices=v, triangles=f, color=texture_color,ka=ka,kd=kd,ks=ks,kt=kt)
 
                 objs.append(geo)
             if parts[0] == 'light':
