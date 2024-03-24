@@ -5,7 +5,6 @@ from PIL import Image
 from multiprocessing import Process, Array
 import random, math
 import datetime
-from utils import monitor_progress
 
 
 # classe para passar os dados quando houver algum hit
@@ -121,8 +120,7 @@ def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth
     #iniciar as threads
     for x in all_threads:
         x.start()
-    
-    monitor_progress(all_threads)
+
 
     # esperar todas as threads concluirem
     for x in all_threads:
@@ -283,7 +281,6 @@ def shade(hit:rayhit, scene:scene_main, counter):
     for light in scene.lights:
         color_light = colorNormalize(light.color)
         l = light.position - hit.hitPoint
-        #print(light.position)
         lDist = numpy.linalg.norm(l)
         l = normalized(l)
 
@@ -554,18 +551,10 @@ def ray_triangle_intersect(orig, dir, v0, v1, v2):
     return True, t  # This ray hits the triangle
 
 class geometry(scene_object):
-    def __init__(self, vertices, triangles, color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
-        #self.position = position
+    def __init__(self, vertices, triangles, displacement_map, color=(255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN=1):
         self.vertices = vertices
         self.triangles = triangles
-        # self.color = color        
-        # self.ka = ka
-        # self.kd = kd
-        # self.ks = ks
-        # self.phongN = phongN
-        # self.kr = kr
-        # self.kt = kt
-        # self.refN = refN        
+        self.displacement_map = displacement_map  # Imagem de entrada para mapeamento de deslocamento
         super().__init__((0,0,0), color, ka, kd, ks, phongN, kr, kt, refN)
     
     def getNormal(self, p):
@@ -575,24 +564,51 @@ class geometry(scene_object):
         return super().getColor(p)
 
     def intersection(self, origin, direction):
-
-        #formula para interseção demonstrada no scratchapixel.com
         max_distance = 999999999999999
         hit = 0
         for t in self.triangles:
             v0 = numpy.array(self.vertices[t[0] - 1])
             v1 = numpy.array(self.vertices[t[1] - 1])
             v2 = numpy.array(self.vertices[t[2] - 1])
-            
-            hit_ocurred, t = ray_triangle_intersect(origin, direction, v0, v1, v2)
+
+            # Apply displacement mapping
+            v0_displaced = self.displace_vertex(v0)
+            v1_displaced = self.displace_vertex(v1)
+            v2_displaced = self.displace_vertex(v2)
+
+            hit_ocurred, t = ray_triangle_intersect(origin, direction, v0_displaced, v1_displaced, v2_displaced)
 
             if hit_ocurred:
                 if t < max_distance:
                     max_distance = t
-                    normal = normalized(numpy.cross(v0 - v1, v0 - v2))
+                    normal = normalized(numpy.cross(v0_displaced - v1_displaced, v0_displaced - v2_displaced))
                     hit = rayhit(self, origin + t * direction, normal, t, self.color, t * direction)
                 
         return hit
+    
+    def displace_vertex(self, vertex):
+        # Obter as coordenadas de textura do vértice
+        u, v = self.texture_coordinates(vertex)
+
+        # Amostrar o valor de deslocamento da imagem de entrada usando coordenadas de textura
+        displacement_value = self.sample_displacement(u, v)
+
+        # Aplicar o deslocamento ao vértice
+        displaced_vertex = numpy.array(vertex) + displacement_value
+
+        return displaced_vertex
+    
+    def texture_coordinates(self, vertex):
+        # Aqui você deve implementar a lógica para calcular as coordenadas de textura do vértice
+        # Neste exemplo simples, vamos apenas retornar as coordenadas do vértice como exemplo
+        return vertex[0], vertex[1]  # Substitua isso pela lógica real de cálculo das coordenadas de textura
+    
+    def sample_displacement(self, u, v):
+        # Amostra o valor de deslocamento da imagem de entrada nos coordenados (u, v)
+        # Aqui você deve implementar a lógica real para amostrar o valor da imagem de entrada
+        # Neste exemplo simples, vamos apenas retornar um valor de deslocamento constante para simplificar
+        return numpy.array([0.0, 0.0, 0.0])  # Substitua isso pela lógica real de amostragem do deslocamento
+
 
 def read_sdl_file(file_path):
     objs = []
@@ -624,7 +640,9 @@ def read_sdl_file(file_path):
                 ks = float(parts[7])
                 kt = float(parts[8])
                 n = float(parts[9]) ## TODO: esse n é o que?
-                geo = geometry(vertices=v, triangles=f, color=rgb,ka=ka,kd=kd,ks=ks,kt=kt)
+
+                displacement_map=Image.open('disp_mapping_1.jpg')
+                geo = geometry(vertices=v, triangles=f, displacement_map=displacement_map, color=rgb,ka=ka,kd=kd,ks=ks,kt=kt)
 
                 objs.append(geo)
             if parts[0] == 'light':
@@ -651,7 +669,7 @@ def read_sdl_file(file_path):
 if __name__ == '__main__' :
     
     # nova cena e criada que guardara os objetos e luzes
-    new_scene = read_sdl_file('objects/cornellroom2/cornellroom2.sdl') # scene_main()
+    new_scene = read_sdl_file('objects/cornellroom.sdl') # scene_main()
 
     # multiplicador das coordenadas, para ajustar as entradas ao espaco
     xyz_coord = numpy.array([1, 1, 1])
