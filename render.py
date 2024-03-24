@@ -5,6 +5,8 @@ from PIL import Image
 from multiprocessing import Process, Array
 import random, math
 import datetime
+from utils import monitor_progress
+
 
 # classe para passar os dados quando houver algum hit
 class rayhit:
@@ -101,7 +103,7 @@ def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth
     for i in range(thread_count):
         xranges.append(int(i * (res_h / thread_count)))
     xranges.append(res_h)
-    
+
     # lista das threads
     all_threads = []
     # lista das cores de cada thread
@@ -120,6 +122,8 @@ def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth
     for x in all_threads:
         x.start()
     
+    monitor_progress(all_threads)
+
     # esperar todas as threads concluirem
     for x in all_threads:
         x.join()
