@@ -609,6 +609,45 @@ class geometry(scene_object):
         # Neste exemplo simples, vamos apenas retornar um valor de deslocamento constante para simplificar
         return numpy.array([0.0, 0.0, 0.0])  # Substitua isso pela lógica real de amostragem do deslocamento
 
+def generate_displacement_map(image_path):
+    # Carregar a imagem
+    input_image = Image.open(image_path).convert("L")  # Converte para escala de cinza
+
+    # Converter imagem PIL para array numpy
+    input_array = np.array(input_image, dtype=np.float32) / 255.0  # Normaliza os valores de pixel para o intervalo [0, 1]
+
+    # Criar mapa de deslocamento
+    displacement_map = np.zeros((input_image.size[1], input_image.size[0], 2), dtype=np.float32)
+    displacement_map[:, :, 0] = input_array
+    displacement_map[:, :, 1] = input_array
+
+    return displacement_map
+
+def apply_displacement_map(surface_points, displacement_map, scale=1.0):
+    """
+    Aplica o mapeamento de deslocamento a uma superfície.
+
+    Args:
+        surface_points: Array numpy das coordenadas dos pontos na superfície (shape: (n, 3))
+        displacement_map: Mapa de deslocamento (shape: (h, w, 2))
+        scale: Fator de escala para ajustar a intensidade do deslocamento
+
+    Returns:
+        surface_points_desplaced: Coordenadas dos pontos com o mapeamento de deslocamento aplicado
+    """
+    # Normaliza as coordenadas dos pontos da superfície para o intervalo [0, 1] para corresponder ao tamanho do mapa de deslocamento
+    normalized_points = surface_points[:, :2] - np.min(surface_points[:, :2], axis=0)
+    normalized_points /= np.max(surface_points[:, :2], axis=0)
+
+    # Interpola os valores do mapa de deslocamento para obter os deslocamentos correspondentes
+    interpolated_values = np.array([np.interp(normalized_points[:, 1], np.linspace(0, 1, displacement_map.shape[0]), displacement_map[:, :, i].flatten()) for i in range(2)]).T
+
+    # Aplica os deslocamentos aos pontos na superfície
+    surface_points_desplaced = surface_points.copy()
+    surface_points_desplaced[:, 2] += interpolated_values[:, 0] * scale  # Deslocamento no eixo z
+    surface_points_desplaced[:, :2] += interpolated_values[:, 1:] * scale  # Deslocamento nos eixos x e y
+
+    return surface_points_desplaced
 
 def read_sdl_file(file_path):
     objs = []
