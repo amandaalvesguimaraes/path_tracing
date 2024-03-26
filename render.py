@@ -58,7 +58,8 @@ class sphere(scene_object):
     def __init__(self, position = [0,0,0], radius = 1, color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
         self.radius = radius
         self.is_light = False
-        super().__init__(position, color, ka, kd, ks, phongN, kr, kt, refN)
+        self.displacement = None
+        super().__init__(position=position, color=color, ka=ka, kd=kd, ks=ks, phongN=phongN, kr=kr, kt=kt,refN=refN)
     
     def getNormal(self, p):
         return normalized(p - self.position)
@@ -99,8 +100,9 @@ class sphere(scene_object):
             normal = self.getNormal(hitPoint)
 
             color = self.getColor(hitPoint)
-            
-            return rayhit(self, hitPoint, normal, hitDist, color, hitPoint - origin)
+
+            return rayhit(hitObj=self, hitPoint=hitPoint, hitNormal=normal, hitDistance=hitDist, color=self.color, ray=hitPoint - origin)
+            # return rayhit(self, hitPoint, normal, hitDist, color, hitPoint - origin)
 
 
 # classe da cena, vai guardar os objetos
@@ -743,8 +745,10 @@ class geometry(scene_object):
         coord2 = numpy.array(self.uvs[tri[2] - 1])
 
         tex_coord = coord0 + (coord1 - coord0) * f1 + (coord2 - coord0) * f2
-        tex_color = self.texture.getpixel((clamp(int(tex_coord[0]* self.texture_width), 0, self.texture_width-1), clamp(int(tex_coord[1] * self.texture_height), 0, self.texture_height-1)))
-
+        try:
+            tex_color = self.texture.getpixel((clamp(int(tex_coord[0]* self.texture_width), 0, self.texture_width-1), clamp(int(tex_coord[1] * self.texture_height), 0, self.texture_height-1)))
+        except:
+            print(tex_coord)
         return tex_color
 
 
@@ -843,11 +847,11 @@ def read_sdl_file(file_path):
                 ks = float(parts[7])
                 kt = float(parts[8])
                 n = float(parts[9])
-                xyz = colorDenormalize((float(parts[10]), float(parts[11]), float(parts[12])))
+                xyz = (float(parts[10]), float(parts[11]), float(parts[12]))
                 radius = float(parts[13])
+                print(xyz)
                 new_sphere = sphere(position=xyz, radius=radius,color=rgb,ka=ka,kd=kd,ks=ks,kt=kt,phongN=n)
-
-
+                objs.append(new_sphere)
             if parts[0] == 'light':
                 # print('light')
                 # print(parts)
@@ -903,10 +907,14 @@ if __name__ == '__main__' :
     xyz_coord = numpy.array([1, 1, 1])
 
     for obj in new_scene.objs:
-        for i in range(len(obj.vertices)):
+        if type(obj) == geometry:
+        # try:
+            for i in range(len(obj.vertices)):
+                # print(obj.vertices[i])
+                obj.vertices[i] = obj.vertices[i] * xyz_coord
             # print(obj.vertices[i])
-            obj.vertices[i] = obj.vertices[i] * xyz_coord
-            # print(obj.vertices[i])
+        # except:
+        #     pass
 
     cam_forward = normalized(numpy.array([0,0,-1]))
     cam_up = normalized(numpy.array([0,1,0]))
@@ -916,7 +924,7 @@ if __name__ == '__main__' :
     max_depth = 1
     size_pixel = 0.05
     cam_dist = 40
-    rays_per_pixel = 10
+    rays_per_pixel = 20
 
     # checa se cam_forward e cam_up são aceitos
     if (cam_forward[0] == 0 and cam_forward[1] == 0 and cam_forward[2] == 0) or (cam_up[0] == 0 and cam_up[1] == 0 and cam_up[2] == 0):
