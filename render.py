@@ -455,6 +455,7 @@ def colorDenormalize(color):
 def read_obj_file(file_path):
     vertices = []
     faces = []
+    uvs = []
 
     with open(file_path, 'r') as file:
         for line in file:
@@ -465,6 +466,10 @@ def read_obj_file(file_path):
                 # Vertex line
                 vertex = [float(p) for p in parts[1:]]
                 vertices.append(vertex)
+            if parts[0] == 'uv':
+                # Vertex line
+                coord = [float(p) for p in parts[1:]]
+                uvs.append(coord)
             elif parts[0] == 'f':
                 # Face line
                 face = [int(p) for p in parts[1:]]
@@ -472,7 +477,7 @@ def read_obj_file(file_path):
 
     # print (vertices)
     # print(faces)
-    return vertices, faces
+    return vertices, faces, uvs
 
 class luz_cornell(light):
 
@@ -507,7 +512,7 @@ def ray_triangle_intersect(orig, dir, v0, v1, v2):
     # Check if the ray and plane are parallel.
     NdotRayDirection = numpy.dot(N, dir)
     if abs(NdotRayDirection) < kEpsilon:  # Almost 0
-        return False  # They are parallel, so they don't intersect!
+        return False, 0  # They are parallel, so they don't intersect!
 
     # Compute d parameter using equation 2
     d = -numpy.dot(N, v0)
@@ -548,11 +553,25 @@ def ray_triangle_intersect(orig, dir, v0, v1, v2):
 
     return True, t  # This ray hits the triangle
 
+
+def clamp01(value):
+    return max(0, min(1, value))
+
+def clamp(value, min_value, max_value):
+    return max(min_value, min(max_value, value))
 class geometry(scene_object):
-    def __init__(self, vertices, triangles, color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
+    def __init__(self, vertices, triangles, uvs = [], texture = None,color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
         #self.position = position
         self.vertices = vertices
         self.triangles = triangles
+        self.uvs = uvs
+        self.texture = Image.open('test_texture.png').convert('RGB')
+        #print(self.texture.getpixel((260,0)))
+        self.texture_data = numpy.array(self.texture)
+        #print (self.texture_data[0,1])
+
+        self.texture_width, self.texture_height = self.texture.size
+        #texture_image = Image.open(texture_image_path)
         # self.color = color        
         # self.ka = ka
         # self.kd = kd
@@ -568,7 +587,77 @@ class geometry(scene_object):
     
     def getColor(self, p):
         return super().getColor(p)
+    
+    def sample_texture(self, tex_coord):
+        if self.texture == None:
+            return self.color
+    
+    def get_color_from_texture(self, hit_point, tri):
+        v0 = numpy.array(self.vertices[tri[0] - 1])
+        v1 = numpy.array(self.vertices[tri[1] - 1])
+        v2 = numpy.array(self.vertices[tri[2] - 1])
 
+        l1 = v1 - v0
+        l2 = v2 - v0
+
+        point = hit_point - v0
+
+        dot00 = numpy.dot(l1, l1)
+        dot01 = numpy.dot(l1, l2)
+        dot11 = numpy.dot(l2, l2)
+        dot02 = numpy.dot(l1, point)
+        dot12 = numpy.dot(l2, point)
+
+        invDenom = 1 / (dot00 * dot11 - dot01 * dot01)
+        f1 = (dot11 * dot02 - dot01 * dot12) * invDenom
+        f2 = (dot00 * dot12 - dot01 * dot02) * invDenom
+
+        if(self.uvs == []):
+            return self.getColor(hit_point)
+
+        coord0 = numpy.array(self.uvs[tri[0] - 1])
+        coord1 = numpy.array(self.uvs[tri[1] - 1])
+        coord2 = numpy.array(self.uvs[tri[2] - 1])
+
+        tex_coord = coord0 + (coord1 - coord0) * f1 + (coord2 - coord0) * f2
+        tex_color = self.texture.getpixel((clamp(int(tex_coord[0]* self.texture_width), 0, self.texture_width-1), clamp(int(tex_coord[1] * self.texture_height), 0, self.texture_height-1)))
+
+        return tex_color
+
+
+
+
+    def intersection(self, origin, direction):
+
+        #formula para interseção demonstrada no scratchapixel.com
+        max_distance = 999999999999999
+        hit = 0
+        tri_index = 0
+        for tri in self.triangles:
+            tri_index += 1
+            v0 = numpy.array(self.vertices[tri[0] - 1])
+            v1 = numpy.array(self.vertices[tri[1] - 1])
+            v2 = numpy.array(self.vertices[tri[2] - 1])
+            
+            hit_ocurred, t = ray_triangle_intersect(origin, direction, v0, v1, v2)
+
+            if hit_ocurred:
+                if t < max_distance:
+                    max_distance = t
+                    normal = normalized(numpy.cross(v0 - v1, v0 - v2))
+                    hit_point = origin + t * direction
+                    hit = rayhit(hitObj=self, hitPoint=hit_point, hitNormal=normal, hitDistance=t, color=self.get_color_from_texture(hit_point, tri), ray=t * direction)                    
+                
+        return hit
+
+class geometry_light(geometry):
+    def __init__(self, vertices, triangles, color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
+        super().__init__(vertices=vertices, triangles=triangles,color=color,ka=ka,kd=kd,ks=ks,phongN=phongN,kr=kr,kt=kt,refN=refN)
+
+
+    def getColor(self, p):
+        return self.color
+    
     def intersection(self, origin, direction):
 
         #formula para interseção demonstrada no scratchapixel.com
@@ -585,7 +674,9 @@ class geometry(scene_object):
                 if t < max_distance:
                     max_distance = t
                     normal = normalized(numpy.cross(v0 - v1, v0 - v2))
-                    hit = rayhit(self, origin + t * direction, normal, t, self.color, t * direction)
+                    hit = rayhit(hitObj=self, hitPoint=origin + t * direction, hitNormal=normal, hitDistance=t, color=self.color, ray=t * direction)
+                    # if type(hit.color) == int:
+                    #     print ('HAHAAA')
                 
         return hit
 
@@ -612,25 +703,27 @@ def read_sdl_file(file_path):
                 continue
             if parts[0] == 'object':
                 
-                v, f = read_obj_file(f'objects/{parts[1]}')
+                v, f, uvs = read_obj_file(f'objects/{parts[1]}')
                 rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
                 ka = float(parts[5])
                 kd = float(parts[6])
                 ks = float(parts[7])
                 kt = float(parts[8])
                 n = float(parts[9]) ## TODO: esse n é o que?
-                geo = geometry(vertices=v, triangles=f, color=rgb,ka=ka,kd=kd,ks=ks,kt=kt)
+                geo = geometry(vertices=v, triangles=f, uvs=uvs,color=rgb,ka=ka,kd=kd,ks=ks,kt=kt,phongN=n)
 
                 objs.append(geo)
             if parts[0] == 'light':
                 # print('light')
                 # print(parts)
-                v, f = read_obj_file(f'objects/{parts[1]}')
+                v, f, uvs = read_obj_file(f'objects/{parts[1]}')
                 rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
 
                 #new_light = luz_cornell(position=[0,0,0], color=rgb,vertices=v,triangles=f)
                 new_light = luz_cornell(rgb, v, f)
                 lights.append(new_light)
+                geo_light = geometry_light(vertices=v, triangles=f, color=rgb)
+                objs.append(geo_light)
             if parts[0] == 'background':
                 background = colorDenormalize((float(parts[1]), float(parts[2]), float(parts[3])))
             if parts[0] == 'ambient':
@@ -665,7 +758,7 @@ if __name__ == '__main__' :
     max_depth = 1
     size_pixel = 0.05
     cam_dist = 40
-    rays_per_pixel = 100
+    rays_per_pixel = 10
 
     # checa se cam_forward e cam_up são aceitos
     if (cam_forward[0] == 0 and cam_forward[1] == 0 and cam_forward[2] == 0) or (cam_up[0] == 0 and cam_up[1] == 0 and cam_up[2] == 0):
