@@ -361,7 +361,9 @@ def shade(hit:rayhit, scene:scene_main, counter):
 
     #return color_difuse 
     # para cada luz na cena calcular a cor
-    for light in scene.lights:
+    #for light in scene.lights:
+    if True:
+        light = random.choice(scene.lights)
         color_light = colorNormalize(light.color)
         l = light.position - hit.hitPoint
         lDist = numpy.linalg.norm(l)
@@ -375,20 +377,20 @@ def shade(hit:rayhit, scene:scene_main, counter):
             shadowHit = trace(hit.hitPoint + l *0.00001, l, scene, True)
             # print('shadowHit.hitDistance', shadowHit.hitDistance)
             if shadowHit !=0 and shadowHit.hitDistance < lDist:
-                continue
-            
-            # cor difusa
-            color = colorSum(color, colorScale(colorMul(color_light, color_difuse), ndotl * hit.hitObj.kd))
-            
-            rj = 2 * ndotl * hit.hitNormal - l
+                pass
+            else:            
+                # cor difusa
+                color = colorSum(color, colorScale(colorMul(color_light, color_difuse), ndotl * hit.hitObj.kd))
+                
+                rj = 2 * ndotl * hit.hitNormal - l
 
-            view = normalized(-hit.ray)
-            rjdotview = numpy.dot(rj,view).real
-            if rjdotview < 0:
-                rjdotview = 0
-            
-            # cor especular
-            color = colorSum(color, colorScale(color_light , hit.hitObj.ks * numpy.power(rjdotview, hit.hitObj.phongN)))
+                view = normalized(-hit.ray)
+                rjdotview = numpy.dot(rj,view).real
+                if rjdotview < 0:
+                    rjdotview = 0
+                
+                # cor especular
+                color = colorSum(color, colorScale(color_light , hit.hitObj.ks * numpy.power(rjdotview, hit.hitObj.phongN)))
 
     # ray recursivo do pathtracing
     if counter > 0:
