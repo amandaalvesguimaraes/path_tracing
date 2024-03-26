@@ -83,8 +83,37 @@ class light:
         self.position = position
         self.color = color
 
+def vertex_pass(scene):
+    for obj in scene.objs:
+        if obj.displacement == None:
+            continue
+
+        new_vertices = []
+        for v in range(len(obj.vertices)):
+            
+            normals = []
+            for t in obj.triangles:
+                if t[0] == (v + 1) or t[1] == (v + 1) or t[2] == (v + 1):                    
+                    v0 = numpy.array(obj.vertices[t[0] - 1])
+                    v1 = numpy.array(obj.vertices[t[1] - 1])
+                    v2 = numpy.array(obj.vertices[t[2] - 1])
+
+                    l1 = v1 - v0
+                    l2 = v2 - v0
+                    triangle_normal = numpy.cross(l1, l2)
+                    normals.append(triangle_normal)
+
+            vertex_normal = calculate_vertex_normal(normals)
+
+            new_vertices.append(obj.vertices[v] + obj.get_disp_strength(v) * 2)
+        obj.vertices = new_vertices
+
+    return scene
+
 # função principal para criar a imagem test.png com o resultado
 def render(res_h, res_v, pxl_size,d,cam_pos,cam_forward,cam_up, scene, max_depth, rays_per_pixel):
+    
+    scene = vertex_pass(scene)
     # cria um Image todo preto
     img = Image.new('RGB', (res_h,res_v), color = (0,0,0))
     
@@ -460,7 +489,8 @@ def read_obj_file(file_path):
     vertices = []
     faces = []
     uvs = []
-
+    tex = None
+    disp = None
     with open(file_path, 'r') as file:
         for line in file:
             parts = line.strip().split()
@@ -470,18 +500,23 @@ def read_obj_file(file_path):
                 # Vertex line
                 vertex = [float(p) for p in parts[1:]]
                 vertices.append(vertex)
-            if parts[0] == 'uv':
+            elif parts[0] == 'uv':
                 # Vertex line
                 coord = [float(p) for p in parts[1:]]
                 uvs.append(coord)
             elif parts[0] == 'f':
                 # Face line
                 face = [int(p) for p in parts[1:]]
-                faces.append(face)
-
+                faces.append(face)                
+            elif parts[0] == 'tex':
+                # Face line
+                tex = parts[1]
+            elif parts[0] == 'disp':
+                # Face line
+                disp = parts[1]
     # print (vertices)
     # print(faces)
-    return vertices, faces, uvs
+    return vertices, faces, uvs, tex, disp
 
 class luz_cornell(light):
 
@@ -557,6 +592,17 @@ def ray_triangle_intersect(orig, dir, v0, v1, v2):
 
     return True, t  # This ray hits the triangle
 
+def calculate_vertex_normal(triangle_normals):
+    # Convert the triangle normals array to a numpy array for easier manipulation
+    triangle_normals_array = numpy.array(triangle_normals)
+    
+    # Average the triangle normals
+    vertex_normal = numpy.mean(triangle_normals_array, axis=0)
+    
+    # Normalize the vertex normal to ensure it has unit length
+    vertex_normal /= numpy.linalg.norm(vertex_normal)
+    
+    return vertex_normal
 
 def clamp01(value):
     return max(0, min(1, value))
@@ -564,17 +610,20 @@ def clamp01(value):
 def clamp(value, min_value, max_value):
     return max(min_value, min(max_value, value))
 class geometry(scene_object):
-    def __init__(self, vertices, triangles, uvs = [], texture = None,color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
+    def __init__(self, vertices, triangles, uvs = [], texture = None, displacement = None,color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
         #self.position = position
         self.vertices = vertices
         self.triangles = triangles
         self.uvs = uvs
-        self.texture = Image.open('test_texture.png').convert('RGB')
-        #print(self.texture.getpixel((260,0)))
-        self.texture_data = numpy.array(self.texture)
-        #print (self.texture_data[0,1])
-
-        self.texture_width, self.texture_height = self.texture.size
+        self.texture = texture
+        if texture != None:
+            self.texture = Image.open(texture).convert('RGB')
+            self.texture_width, self.texture_height = self.texture.size
+        self.displacement = displacement        
+        if displacement != None:
+            self.displacement = Image.open(displacement) #.convert('RGB')
+            self.displacement_width, self.displacement_height = self.displacement.size
+        
         #texture_image = Image.open(texture_image_path)
         # self.color = color        
         # self.ka = ka
@@ -585,6 +634,12 @@ class geometry(scene_object):
         # self.kt = kt
         # self.refN = refN        
         super().__init__((0,0,0), color, ka, kd, ks, phongN, kr, kt, refN)
+    
+    def get_disp_strength(self, vertice_index):
+        tex_coord = self.uvs[vertice_index]
+        tex_color = self.displacement.getpixel((clamp(int(tex_coord[0]* self.displacement_width), 0, self.displacement_width-1), clamp(int(tex_coord[1] * self.displacement_height), 0, self.displacement_height-1)))
+        #print(tex_color)
+        return colorNormalize(tex_color)[0] 
     
     def getNormal(self, p):
         return self.normal
@@ -616,7 +671,7 @@ class geometry(scene_object):
         f1 = (dot11 * dot02 - dot01 * dot12) * invDenom
         f2 = (dot00 * dot12 - dot01 * dot02) * invDenom
 
-        if(self.uvs == []):
+        if(self.uvs == [] or self.texture == None):
             return self.getColor(hit_point)
 
         coord0 = numpy.array(self.uvs[tri[0] - 1])
@@ -707,20 +762,20 @@ def read_sdl_file(file_path):
                 continue
             if parts[0] == 'object':
                 
-                v, f, uvs = read_obj_file(f'objects/{parts[1]}')
+                v, f, uvs, tex, disp = read_obj_file(f'objects/{parts[1]}')
                 rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
                 ka = float(parts[5])
                 kd = float(parts[6])
                 ks = float(parts[7])
                 kt = float(parts[8])
                 n = float(parts[9]) ## TODO: esse n é o que?
-                geo = geometry(vertices=v, triangles=f, uvs=uvs,color=rgb,ka=ka,kd=kd,ks=ks,kt=kt,phongN=n)
+                geo = geometry(vertices=v, triangles=f, uvs=uvs,texture=tex, displacement=disp,color=rgb,ka=ka,kd=kd,ks=ks,kt=kt,phongN=n)
 
                 objs.append(geo)
             if parts[0] == 'light':
                 # print('light')
                 # print(parts)
-                v, f, uvs = read_obj_file(f'objects/{parts[1]}')
+                v, f, uvs, tex, disp = read_obj_file(f'objects/{parts[1]}')
                 rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
 
                 #new_light = luz_cornell(position=[0,0,0], color=rgb,vertices=v,triangles=f)
@@ -743,7 +798,7 @@ def read_sdl_file(file_path):
 if __name__ == '__main__' :
     
     # nova cena e criada que guardara os objetos e luzes
-    new_scene = read_sdl_file('objects/cornellroom.sdl') # scene_main()
+    new_scene = read_sdl_file('objects/cornellroom_disp.sdl') # scene_main()
 
     # multiplicador das coordenadas, para ajustar as entradas ao espaco
     xyz_coord = numpy.array([1, 1, 1])
@@ -762,7 +817,7 @@ if __name__ == '__main__' :
     max_depth = 1
     size_pixel = 0.05
     cam_dist = 40
-    rays_per_pixel = 10
+    rays_per_pixel = 0
 
     # checa se cam_forward e cam_up são aceitos
     if (cam_forward[0] == 0 and cam_forward[1] == 0 and cam_forward[2] == 0) or (cam_up[0] == 0 and cam_up[1] == 0 and cam_up[2] == 0):
