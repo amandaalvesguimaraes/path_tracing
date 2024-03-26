@@ -48,5 +48,7 @@ object cube1.obj 1.0 1.0 1.0 0.3 0.7 0 0 5
 # cube 2 WHITE
 object cube2.obj 1.0 1.0 1.0 0.3 0.7 0 0 5
 
+sphere sphere.obj 1.0 0.0 0.0 0.3 0.7 0 0 5 1.8220 -1.8416 -20.5900 2
+
 output cornell.pnm
 
