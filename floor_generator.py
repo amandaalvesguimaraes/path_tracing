@@ -22,7 +22,7 @@ for i in range(sub + 1):
 for i in range(sub):
     for j in range (sub):
         tris.append([i * (sub + 1) + j, i * (sub + 1) + j + 1, (i + 1) * (sub + 1) + j])
-        tris.append([(i + 1) * (sub + 1) + j + 1, i * (sub + 1) + j + 1, (i + 1) * (sub + 1) + j])
+        tris.append([(i + 1) * (sub + 1) + j + 1, (i + 1) * (sub + 1) + j, i * (sub + 1) + j + 1])
 
 
 
@@ -34,5 +34,4 @@ for i in uvs:
     print(f'uv {i[0]} {i[1]}')
 print('')
 for i in tris:
-    print(f'f {i[0]+1} {i[1]+1} {i[2]+1}') 
-    
+    print(f'f {i[0]+1} {i[1]+1} {i[2]+1}')     
