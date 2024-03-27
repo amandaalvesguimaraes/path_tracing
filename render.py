@@ -239,9 +239,7 @@ def cast_first(origin, direction,scene, counter, rays_per_pixel):
     color = colorNormalize(scene.getBackground_Color())
     hit = trace(origin,direction,scene)
     if hit:
-        #for _ in range(rays_per_pixel):
         color = shade_first(hit, scene, counter, rays_per_pixel)
-        #print(color)
         
     return (color)
 
@@ -294,7 +292,6 @@ def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
         # se recebe luz
         if ndotl > 0:
             shadowHit = trace(hit.hitPoint + l *0.00001, l, scene, True)
-            # print('shadowHit.hitDistance', shadowHit.hitDistance)
             if shadowHit !=0 and shadowHit.hitDistance < lDist:
                 continue
             
@@ -307,13 +304,10 @@ def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
             rjdotview = numpy.dot(rj,view).real
             if rjdotview < 0:
                 rjdotview = 0
-            
-            # cor especular
-            color = colorSum(color, colorScale(color_light , hit.hitObj.ks * numpy.power(rjdotview, hit.hitObj.phongN)))
     
     
     color = colorSum(colorDivide(color, rays_per_pixel), color_amb)
-
+        
     # ray recursivo do pathtracing
     if counter > 0:
         sec_color = (0,0,0)
@@ -334,9 +328,6 @@ def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
                 z = math.cos(theta)
 
                 rayDir = normalized(numpy.array([x, y, z]))
-
-                #view = normalized(hit.ray)
-                #rayDir = reflect(view, hit.hitNormal)
                 refColor = cast(hit.hitPoint + hit.hitNormal * 0.00001, rayDir, scene, counter-1)
                 sec_color = colorSum(sec_color, colorScale(refColor, hit.hitObj.kd))
             elif ray_type == 'ks': #specular
@@ -344,30 +335,14 @@ def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
                 rayDir = reflect(view, hit.hitNormal)
                 refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
                 sec_color = colorSum(sec_color, colorScale(refColor, hit.hitObj.ks))
-            elif ray_type == 'kt': #
-                kr = hit.hitObj.kr
-                if hit.hitObj.kt > 0:
-                    view = normalized(hit.ray)
-                    rayDir = refract(view, normalized(hit.hitNormal), hit.hitObj.refN)
-                    
-                    if numpy.isscalar(rayDir) == False: # se ha refracao
-                        # cast recursivo da refracao
-                        refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
-                        # soma da cor da refracao
-                        color = colorSum(color,colorScale(refColor, hit.hitObj.kt))
-                    else: # se nao ha refracao
-                        kr = 1
+            elif ray_type == 'kt':
+                view = normalized(hit.ray)
+                rayDir = refract(view, normalized(hit.hitNormal), 1.5)
                 
-                #reflexao
-                if kr > 0:
-                    view = normalized(hit.ray)
-                    rayDir = reflect(view, hit.hitNormal)
-                    # cast recursivo da reflexao
-                    refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
-                    # soma da cor da reflexao
-                    color = colorSum(color,colorScale(refColor, kr))
-                #print('kt')
-                #pass
+                refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+                # soma da cor da refracao
+                sec_color = colorSum(sec_color,colorScale(refColor, hit.hitObj.kt))
+                
         if rays_per_pixel > 0:
             color = colorDivide(colorSum(color, colorDivide(sec_color,rays_per_pixel)),2)
     return color
@@ -386,7 +361,7 @@ def shade(hit:rayhit, scene:scene_main, counter):
     #return color_difuse 
     # para cada luz na cena calcular a cor
     #for light in scene.lights:
-    ray_count = 1
+    ray_count = 3
     for i in range(ray_count):
         light = random.choice(scene.lights)
         color_light = colorNormalize(light.color)
@@ -400,7 +375,6 @@ def shade(hit:rayhit, scene:scene_main, counter):
         # se recebe luz
         if ndotl > 0:
             shadowHit = trace(hit.hitPoint + l *0.00001, l, scene, True)
-            # print('shadowHit.hitDistance', shadowHit.hitDistance)
             if shadowHit !=0 and shadowHit.hitDistance < lDist:
                 continue
             
@@ -414,8 +388,6 @@ def shade(hit:rayhit, scene:scene_main, counter):
             if rjdotview < 0:
                 rjdotview = 0
             
-            # cor especular
-            color = colorSum(color, colorScale(color_light , hit.hitObj.ks * numpy.power(rjdotview, hit.hitObj.phongN)))
 
     color = colorSum(colorDivide(color, ray_count), color_amb)
     # ray recursivo do pathtracing
@@ -445,53 +417,15 @@ def shade(hit:rayhit, scene:scene_main, counter):
             refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
             color = colorSum(color, colorScale(refColor, hit.hitObj.ks))
         elif ray_type == 'kt': #transmission
-            kr = hit.hitObj.kr
-            if hit.hitObj.kt > 0:
-                view = normalized(hit.ray)
-                rayDir = refract(view, normalized(hit.hitNormal), hit.hitObj.refN)
-                
-                if numpy.isscalar(rayDir) == False: # se ha refracao
-                    # cast recursivo da refracao
-                    refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
-                    # soma da cor da refracao
-                    color = colorSum(color,colorScale(refColor, hit.hitObj.kt))
-                else: # se nao ha refracao
-                    kr = 1
             
-            #reflexao
-            if kr > 0:
-                view = normalized(hit.ray)
-                rayDir = reflect(view, hit.hitNormal)
-                # cast recursivo da reflexao
-                refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
-                # soma da cor da reflexao
-                color = colorSum(color,colorScale(refColor, kr))
-                #pass
-
-    # contador de rays recursivos
-    # if counter > 0:
-    #     # refracao
-    #     kr = hit.hitObj.kr
-    #     if hit.hitObj.kt > 0:
-    #         view = normalized(hit.ray)
-    #         rayDir = refract(view, normalized(hit.hitNormal), hit.hitObj.refN)
+            view = normalized(hit.ray)
+            rayDir = refract(view, normalized(hit.hitNormal), 1.5)
             
-    #         if numpy.isscalar(rayDir) == False: # se ha refracao
-    #             # cast recursivo da refracao
-    #             refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
-    #             # soma da cor da refracao
-    #             color = colorSum(color,colorScale(refColor, hit.hitObj.kt))
-    #         else: # se nao ha refracao
-    #             kr = 1
-        
-    #     #reflexao
-    #     if kr > 0:
-    #         view = normalized(hit.ray)
-    #         rayDir = reflect(view, hit.hitNormal)
-    #         # cast recursivo da reflexao
-    #         refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
-    #         # soma da cor da reflexao
-    #         color = colorSum(color,colorScale(refColor, kr))
+            # cast recursivo da refracao
+            refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+            # soma da cor da refracao
+            color = colorSum(color,colorScale(refColor, hit.hitObj.kt))
+            
     
 
     return color
@@ -729,7 +663,6 @@ class geometry(scene_object):
     def get_disp_strength(self, vertice_index):
         tex_coord = self.uvs[vertice_index]
         tex_color = self.displacement.getpixel((clamp(int(tex_coord[0]* self.displacement_width), 0, self.displacement_width-1), clamp(int(tex_coord[1] * self.displacement_height), 0, self.displacement_height-1)))
-        #print(tex_color)
         return colorNormalize(tex_color)[0] 
     
     def getNormal(self, p):
@@ -866,7 +799,6 @@ def read_sdl_file(file_path):
                 n = float(parts[9])
                 xyz = (float(parts[10]), float(parts[11]), float(parts[12]))
                 radius = float(parts[13])
-                print(xyz)
                 new_sphere = sphere(position=xyz, radius=radius,color=rgb,ka=ka,kd=kd,ks=ks,kt=kt,phongN=n)
                 objs.append(new_sphere)
             if parts[0] == 'light':
@@ -903,7 +835,7 @@ def read_sdl_file(file_path):
 if __name__ == '__main__' :
     
     # nova cena e criada que guardara os objetos e luzes
-    new_scene = read_sdl_file('objects/cornellroom_disp.sdl') # scene_main()
+    new_scene = read_sdl_file('objects/cornellroom.sdl') # scene_main()
 
     # multiplicador das coordenadas, para ajustar as entradas ao espaco
     xyz_coord = numpy.array([1, 1, 1])
@@ -916,12 +848,12 @@ if __name__ == '__main__' :
     cam_forward = normalized(numpy.array([0,0,-1]))
     cam_up = normalized(numpy.array([0,1,0]))
     cam_pos = numpy.array([0,0,15.7])
-    res_horizontal = 200
-    res_vertical = 200
-    max_depth = 4
-    size_pixel = 0.05
+    res_horizontal = 400
+    res_vertical = 400
+    max_depth = 8
+    size_pixel = 0.05 * (200.0 / res_horizontal) 
     cam_dist = 40
-    rays_per_pixel = 5
+    rays_per_pixel = 50
 
     # checa se cam_forward e cam_up são aceitos
     if (cam_forward[0] == 0 and cam_forward[1] == 0 and cam_forward[2] == 0) or (cam_up[0] == 0 and cam_up[1] == 0 and cam_up[2] == 0):
