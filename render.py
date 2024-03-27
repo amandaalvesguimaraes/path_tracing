@@ -55,6 +55,58 @@ class scene_object:
     def intersection(self, origin, direction):
         return
 
+class sphere(scene_object):
+
+    def __init__(self, position = [0,0,0], radius = 1, color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
+        self.radius = radius
+        self.is_light = False
+        self.displacement = None
+        super().__init__(position=position, color=color, ka=ka, kd=kd, ks=ks, phongN=phongN, kr=kr, kt=kt,refN=refN)
+    
+    def getNormal(self, p):
+        return normalized(p - self.position)
+    
+    def getColor(self, p):
+        return super().getColor(p)
+    
+    def intersection(self, origin, direction):
+        #formula para interseção demonstrada no stratchapixel.com
+        l = self.position - origin
+        
+        tca = numpy.dot(l,direction)
+
+        if tca < 0:
+            return 0
+        
+        pitagoras = pow(numpy.linalg.norm(l) ,2) - pow(tca,2)
+        if pitagoras < 0:
+            return 0
+        d = sqrt(pitagoras)
+        
+        if d.real < 0.0:
+            return 0
+        elif d.real > self.radius:
+            return 0
+        else:
+            thc = sqrt(pow(self.radius,2) - pow(d,2))
+
+            # buscamos a colisao mais proxima
+            hitDist = numpy.minimum(tca - thc, tca + thc)
+            
+            # mas, se estamos dentro da esfera significa que o raio acabou de entrar na esfera, logo usamos a colisao mais distance
+            if numpy.linalg.norm(l) < self.radius: 
+                hitDist = numpy.maximum(tca-thc,tca+thc)
+
+            hitPoint = origin + direction * hitDist
+
+            normal = self.getNormal(hitPoint)
+
+            color = self.getColor(hitPoint)
+
+            return rayhit(hitObj=self, hitPoint=hitPoint, hitNormal=normal, hitDistance=hitDist, color=self.color, ray=hitPoint - origin)
+            # return rayhit(self, hitPoint, normal, hitDist, color, hitPoint - origin)
+
+
 # classe da cena, vai guardar os objetos
 class scene_main:
     def __init__(self, lights=[], objs=[], bg_color=(0, 0, 0), ambientLight = (0,0,0)):
@@ -105,7 +157,7 @@ def vertex_pass(scene):
 
             vertex_normal = calculate_vertex_normal(normals)
 
-            new_vertices.append(obj.vertices[v] + obj.get_disp_strength(v) * 2)
+            new_vertices.append(obj.vertices[v] + vertex_normal * obj.get_disp_strength(v) * 2)
         obj.vertices = new_vertices
 
     return scene
@@ -179,12 +231,7 @@ def thread_render(cam_pos, cam_up, cam_right, topleft, pxl_size, scene, x0, x1, 
             y = y_ + y0
 
             ray_dir = normalized((topleft + (cam_up * -y + cam_right * x) * pxl_size) - cam_pos)
-            # raycast e feito a partir da camera com a direcao do raio, max_depth e a profundida da recursao(raios secundarios de reflexao e refracao)
-
-            # color = (0,0,0)
-            # for j_ in range(rays_per_pixel):
-            #     color = colorSum(color, cast(cam_pos,ray_dir, scene, max_depth))
-            # color = colorDivide(color, rays_per_pixel)
+            
             c = colorDenormalize(cast_first(cam_pos,ray_dir, scene, max_depth, rays_per_pixel))
             arsR[x_ * y1 + y_] = c[0]
             arsG[x_ * y1 + y_] = c[1]
@@ -212,12 +259,14 @@ def cast(origin, direction,scene, counter):
         
     return (color)
 
-def trace(origin, direction, scene:scene_main):
+def trace(origin, direction, scene:scene_main, ignore_light=False):
     hit = 0
 
     # buscamos intersecoes com todos os objetos e retornamos a intersecao mais proxima ao ponto de origem do raio
     for i in range(len(scene.objs)):
-        
+        if scene.objs[i].is_light and ignore_light:
+            continue
+
         hitCheck = scene.objs[i].intersection(origin,direction)
 
         if hitCheck != 0 and (hit == 0 or hitCheck.hitDistance < hit.hitDistance):
@@ -229,12 +278,15 @@ def trace(origin, direction, scene:scene_main):
 def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
     # cor do objeto
     color_difuse = colorNormalize(hit.color)
+    if hit.hitObj.is_light:
+        return color_difuse
     # cor do pixel iniciada com a luz ambiente
-    color =  colorScale(colorMul(color_difuse, colorNormalize(scene.ambientLight)), hit.hitObj.ka)
-
-    #return color_difuse 
+    color_amb =  colorScale(colorMul(color_difuse, colorNormalize(scene.ambientLight)), hit.hitObj.ka)
+    color = (0,0,0)
+    
     # para cada luz na cena calcular a cor
-    for light in scene.lights:
+    for i in range(rays_per_pixel):
+        light = random.choice(scene.lights)
         color_light = colorNormalize(light.color)
         l = light.position - hit.hitPoint
         lDist = numpy.linalg.norm(l)
@@ -245,7 +297,7 @@ def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
         
         # se recebe luz
         if ndotl > 0:
-            shadowHit = trace(hit.hitPoint + l *0.00001, l, scene)
+            shadowHit = trace(hit.hitPoint + l *0.00001, l, scene, True)
             # print('shadowHit.hitDistance', shadowHit.hitDistance)
             if shadowHit !=0 and shadowHit.hitDistance < lDist:
                 continue
@@ -262,6 +314,9 @@ def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
             
             # cor especular
             color = colorSum(color, colorScale(color_light , hit.hitObj.ks * numpy.power(rjdotview, hit.hitObj.phongN)))
+    
+    
+    color = colorSum(colorDivide(color, rays_per_pixel), color_amb)
 
     # ray recursivo do pathtracing
     if counter > 0:
@@ -293,23 +348,51 @@ def shade_first (hit:rayhit, scene:scene_main, counter, rays_per_pixel):
                 rayDir = reflect(view, hit.hitNormal)
                 refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
                 sec_color = colorSum(sec_color, colorScale(refColor, hit.hitObj.ks))
-            elif ray_type == 'kt': #transmission
-                pass
+            elif ray_type == 'kt': #
+                kr = hit.hitObj.kr
+                if hit.hitObj.kt > 0:
+                    view = normalized(hit.ray)
+                    rayDir = refract(view, normalized(hit.hitNormal), hit.hitObj.refN)
+                    
+                    if numpy.isscalar(rayDir) == False: # se ha refracao
+                        # cast recursivo da refracao
+                        refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+                        # soma da cor da refracao
+                        color = colorSum(color,colorScale(refColor, hit.hitObj.kt))
+                    else: # se nao ha refracao
+                        kr = 1
+                
+                #reflexao
+                if kr > 0:
+                    view = normalized(hit.ray)
+                    rayDir = reflect(view, hit.hitNormal)
+                    # cast recursivo da reflexao
+                    refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+                    # soma da cor da reflexao
+                    color = colorSum(color,colorScale(refColor, kr))
+                #print('kt')
+                #pass
         if rays_per_pixel > 0:
-            color = colorSum(color, colorDivide(sec_color,rays_per_pixel))
+            color = colorDivide(colorSum(color, colorDivide(sec_color,rays_per_pixel)),2)
     return color
 
 
 # funcao shade sera chamada recursivamente, a entrada counter definira quantas recursoes serao feitas
 def shade(hit:rayhit, scene:scene_main, counter):
-    # cor do objeto
+    # cor do objeto    
     color_difuse = colorNormalize(hit.color)
+    if hit.hitObj.is_light:
+        return color_difuse
+    
     # cor do pixel iniciada com a luz ambiente
-    color =  colorScale(colorMul(color_difuse, colorNormalize(scene.ambientLight)), hit.hitObj.ka)
-
+    color_amb =  colorScale(colorMul(color_difuse, colorNormalize(scene.ambientLight)), hit.hitObj.ka)
+    color = (0,0,0)
     #return color_difuse 
     # para cada luz na cena calcular a cor
-    for light in scene.lights:
+    #for light in scene.lights:
+    ray_count = 1
+    for i in range(ray_count):
+        light = random.choice(scene.lights)
         color_light = colorNormalize(light.color)
         l = light.position - hit.hitPoint
         lDist = numpy.linalg.norm(l)
@@ -320,7 +403,7 @@ def shade(hit:rayhit, scene:scene_main, counter):
         
         # se recebe luz
         if ndotl > 0:
-            shadowHit = trace(hit.hitPoint + l *0.00001, l, scene)
+            shadowHit = trace(hit.hitPoint + l *0.00001, l, scene, True)
             # print('shadowHit.hitDistance', shadowHit.hitDistance)
             if shadowHit !=0 and shadowHit.hitDistance < lDist:
                 continue
@@ -338,6 +421,7 @@ def shade(hit:rayhit, scene:scene_main, counter):
             # cor especular
             color = colorSum(color, colorScale(color_light , hit.hitObj.ks * numpy.power(rjdotview, hit.hitObj.phongN)))
 
+    color = colorSum(colorDivide(color, ray_count), color_amb)
     # ray recursivo do pathtracing
     if counter > 0:
         # tipo ray
@@ -357,8 +441,6 @@ def shade(hit:rayhit, scene:scene_main, counter):
 
             rayDir = normalized(numpy.array([x, y, z]))
 
-            #view = normalized(hit.ray)
-            #rayDir = reflect(view, hit.hitNormal)
             refColor = cast(hit.hitPoint + hit.hitNormal * 0.00001, rayDir, scene, counter-1)
             color = colorSum(color, colorScale(refColor, hit.hitObj.kd))
         elif ray_type == 'ks': #specular
@@ -367,7 +449,28 @@ def shade(hit:rayhit, scene:scene_main, counter):
             refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
             color = colorSum(color, colorScale(refColor, hit.hitObj.ks))
         elif ray_type == 'kt': #transmission
-            pass
+            kr = hit.hitObj.kr
+            if hit.hitObj.kt > 0:
+                view = normalized(hit.ray)
+                rayDir = refract(view, normalized(hit.hitNormal), hit.hitObj.refN)
+                
+                if numpy.isscalar(rayDir) == False: # se ha refracao
+                    # cast recursivo da refracao
+                    refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+                    # soma da cor da refracao
+                    color = colorSum(color,colorScale(refColor, hit.hitObj.kt))
+                else: # se nao ha refracao
+                    kr = 1
+            
+            #reflexao
+            if kr > 0:
+                view = normalized(hit.ray)
+                rayDir = reflect(view, hit.hitNormal)
+                # cast recursivo da reflexao
+                refColor = cast(hit.hitPoint + rayDir * 0.00001, rayDir, scene, counter-1)
+                # soma da cor da reflexao
+                color = colorSum(color,colorScale(refColor, kr))
+                #pass
 
     # contador de rays recursivos
     # if counter > 0:
@@ -514,8 +617,7 @@ def read_obj_file(file_path):
             elif parts[0] == 'disp':
                 # Face line
                 disp = parts[1]
-    # print (vertices)
-    # print(faces)
+                
     return vertices, faces, uvs, tex, disp
 
 class luz_cornell(light):
@@ -610,8 +712,8 @@ def clamp01(value):
 def clamp(value, min_value, max_value):
     return max(min_value, min(max_value, value))
 class geometry(scene_object):
-    def __init__(self, vertices, triangles, uvs = [], texture = None, displacement = None,color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
-        #self.position = position
+    def __init__(self, vertices, triangles, uvs = [], texture = None, displacement = None,color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1,is_light=False):
+        
         self.vertices = vertices
         self.triangles = triangles
         self.uvs = uvs
@@ -624,15 +726,8 @@ class geometry(scene_object):
             self.displacement = Image.open(displacement) #.convert('RGB')
             self.displacement_width, self.displacement_height = self.displacement.size
         
-        #texture_image = Image.open(texture_image_path)
-        # self.color = color        
-        # self.ka = ka
-        # self.kd = kd
-        # self.ks = ks
-        # self.phongN = phongN
-        # self.kr = kr
-        # self.kt = kt
-        # self.refN = refN        
+        self.is_light = is_light
+            
         super().__init__((0,0,0), color, ka, kd, ks, phongN, kr, kt, refN)
     
     def get_disp_strength(self, vertice_index):
@@ -679,8 +774,10 @@ class geometry(scene_object):
         coord2 = numpy.array(self.uvs[tri[2] - 1])
 
         tex_coord = coord0 + (coord1 - coord0) * f1 + (coord2 - coord0) * f2
-        tex_color = self.texture.getpixel((clamp(int(tex_coord[0]* self.texture_width), 0, self.texture_width-1), clamp(int(tex_coord[1] * self.texture_height), 0, self.texture_height-1)))
-
+        try:
+            tex_color = self.texture.getpixel((clamp(int(tex_coord[0]* self.texture_width), 0, self.texture_width-1), clamp(int(tex_coord[1] * self.texture_height), 0, self.texture_height-1)))
+        except:
+            print(tex_coord)
         return tex_color
 
 
@@ -711,7 +808,7 @@ class geometry(scene_object):
 
 class geometry_light(geometry):
     def __init__(self, vertices, triangles, color = (255,0,0), ka=1, kd=1, ks=1, phongN=1, kr=0, kt=0, refN = 1):
-        super().__init__(vertices=vertices, triangles=triangles,color=color,ka=ka,kd=kd,ks=ks,phongN=phongN,kr=kr,kt=kt,refN=refN)
+        super().__init__(vertices=vertices, triangles=triangles,color=color,ka=ka,kd=kd,ks=ks,phongN=phongN,kr=kr,kt=kt,refN=refN, is_light=True)
 
 
     def getColor(self, p):
@@ -734,8 +831,7 @@ class geometry_light(geometry):
                     max_distance = t
                     normal = normalized(numpy.cross(v0 - v1, v0 - v2))
                     hit = rayhit(hitObj=self, hitPoint=origin + t * direction, hitNormal=normal, hitDistance=t, color=self.color, ray=t * direction)
-                    # if type(hit.color) == int:
-                    #     print ('HAHAAA')
+
                 
         return hit
 
@@ -743,17 +839,10 @@ def read_sdl_file(file_path):
     objs = []
     lights = []
     eye = (0.0, 0.0, 5.7)
-    # size 200 200
-    # ortho -1 -1 1 1
-    # background 0.0 0.0 0.0
-    # ambient 0.5
+    
 
     background = (0,0,0)
     ambient = colorDenormalize((0.5, 0.5, 0.5))
-
-    # npaths 10
-    # tonemapping 1.0
-    # seed 9
 
     with open(file_path, 'r') as file:
         for line in file:
@@ -768,19 +857,39 @@ def read_sdl_file(file_path):
                 kd = float(parts[6])
                 ks = float(parts[7])
                 kt = float(parts[8])
-                n = float(parts[9]) ## TODO: esse n é o que?
+                n = float(parts[9]) 
                 geo = geometry(vertices=v, triangles=f, uvs=uvs,texture=tex, displacement=disp,color=rgb,ka=ka,kd=kd,ks=ks,kt=kt,phongN=n)
 
                 objs.append(geo)
+            elif parts[0] == 'sphere':
+                rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
+                ka = float(parts[5])
+                kd = float(parts[6])
+                ks = float(parts[7])
+                kt = float(parts[8])
+                n = float(parts[9])
+                xyz = (float(parts[10]), float(parts[11]), float(parts[12]))
+                radius = float(parts[13])
+                print(xyz)
+                new_sphere = sphere(position=xyz, radius=radius,color=rgb,ka=ka,kd=kd,ks=ks,kt=kt,phongN=n)
+                objs.append(new_sphere)
             if parts[0] == 'light':
-                # print('light')
-                # print(parts)
                 v, f, uvs, tex, disp = read_obj_file(f'objects/{parts[1]}')
                 rgb = colorDenormalize((float(parts[2]), float(parts[3]), float(parts[4])))
 
-                #new_light = luz_cornell(position=[0,0,0], color=rgb,vertices=v,triangles=f)
-                new_light = luz_cornell(rgb, v, f)
-                lights.append(new_light)
+                samples_n = 60
+
+                center = numpy.array([0,0,0])
+                for vert in v:
+                    center = center + numpy.array(vert)
+                if len(v) > 0:
+                    center = center/len(v)
+
+                for i in range(samples_n):
+                    new_light = light(center + random.uniform(-0.5, 0.5) * numpy.array([1.82,0,0]) + random.uniform(-0.5, 0.5) * numpy.array([0,0,3.164]),rgb)
+                    lights.append(new_light)
+                    
+                
                 geo_light = geometry_light(vertices=v, triangles=f, color=rgb)
                 objs.append(geo_light)
             if parts[0] == 'background':
@@ -804,20 +913,19 @@ if __name__ == '__main__' :
     xyz_coord = numpy.array([1, 1, 1])
 
     for obj in new_scene.objs:
-        for i in range(len(obj.vertices)):
-            # print(obj.vertices[i])
-            obj.vertices[i] = obj.vertices[i] * xyz_coord
-            # print(obj.vertices[i])
-
+        if type(obj) == geometry:
+            for i in range(len(obj.vertices)):
+                obj.vertices[i] = obj.vertices[i] * xyz_coord
+                
     cam_forward = normalized(numpy.array([0,0,-1]))
     cam_up = normalized(numpy.array([0,1,0]))
     cam_pos = numpy.array([0,0,15.7])
     res_horizontal = 200
     res_vertical = 200
-    max_depth = 1
+    max_depth = 4
     size_pixel = 0.05
     cam_dist = 40
-    rays_per_pixel = 0
+    rays_per_pixel = 5
 
     # checa se cam_forward e cam_up são aceitos
     if (cam_forward[0] == 0 and cam_forward[1] == 0 and cam_forward[2] == 0) or (cam_up[0] == 0 and cam_up[1] == 0 and cam_up[2] == 0):

@@ -23,3 +23,14 @@ f 4 7 8
 f 1 5 6
 f 1 6 2
 # 10 faces
+
+uv 0.0 1.0
+uv 0.0 0.0
+uv 1.0 0.0
+uv 1.0 1.0
+uv 0.0 1.0
+uv 0.0 0.0
+uv 1.0 0.0
+uv 1.0 1.0
+
+tex test_texture.png
