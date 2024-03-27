@@ -582,7 +582,7 @@ def ray_triangle_intersect(orig, dir, v0, v1, v2):
 
     # Check if the ray and plane are parallel.
     NdotRayDirection = numpy.dot(N, dir)
-    if abs(NdotRayDirection) < kEpsilon:  # Almost 0
+    if abs(NdotRayDirection) < kEpsilon or NdotRayDirection > 0:  # Almost 0
         return False, 0  # They are parallel, so they don't intersect!
 
     # Compute d parameter using equation 2
@@ -848,12 +848,12 @@ if __name__ == '__main__' :
     cam_forward = normalized(numpy.array([0,0,-1]))
     cam_up = normalized(numpy.array([0,1,0]))
     cam_pos = numpy.array([0,0,15.7])
-    res_horizontal = 400
-    res_vertical = 400
+    res_horizontal = 200
+    res_vertical = 200
     max_depth = 8
     size_pixel = 0.05 * (200.0 / res_horizontal) 
     cam_dist = 40
-    rays_per_pixel = 50
+    rays_per_pixel = 10
 
     # checa se cam_forward e cam_up são aceitos
     if (cam_forward[0] == 0 and cam_forward[1] == 0 and cam_forward[2] == 0) or (cam_up[0] == 0 and cam_up[1] == 0 and cam_up[2] == 0):
